@@ -5,10 +5,9 @@ services:
     pythonVersion: 3.11
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
-    rootDir: ./backend
+    root: backend
     envVars:
       - key: DATABASE_URL
-        scope: all
         value: sqlite:///./smartflow.db
       - key: PYTHONUNBUFFERED
         value: "1"
@@ -20,10 +19,9 @@ services:
     nodeVersion: 18
     buildCommand: npm ci && npm run build
     startCommand: npm start
-    rootDir: ./frontend
+    root: frontend
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        scope: all
         value: https://smartflow-backend.onrender.com
     
   - type: web
@@ -32,9 +30,8 @@ services:
     nodeVersion: 18
     buildCommand: npm ci
     startCommand: npm start
-    rootDir: ./whatsapp-bridge
+    root: whatsapp-bridge
     envVars:
       - key: BACKEND_URL
-        scope: all
         value: https://smartflow-backend.onrender.com
     healthCheckPath: /status
