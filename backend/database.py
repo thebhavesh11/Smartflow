@@ -1,9 +1,11 @@
 """SQLAlchemy async database setup."""
 
+import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
-DATABASE_URL = "sqlite+aiosqlite:///./smartflow.db"
+# Support environment variable for database URL (for Render deployment)
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./smartflow.db")
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 

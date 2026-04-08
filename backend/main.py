@@ -45,13 +45,21 @@ app = FastAPI(
 )
 
 # CORS
+cors_origins = [
+    "http://localhost:2020",
+    "http://127.0.0.1:2020",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    os.getenv("FRONTEND_URL", "http://localhost:2020"),
+]
+
+# Add Render frontend URL for production
+if frontend_url := os.getenv("NEXT_PUBLIC_FRONTEND_URL"):
+    cors_origins.append(frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        os.getenv("FRONTEND_URL", "http://localhost:3000"),
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

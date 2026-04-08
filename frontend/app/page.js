@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-const API = 'http://localhost:8000/api';
+import { getAPIUrl } from '@/lib/apiClient';
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);

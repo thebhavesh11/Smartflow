@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: smartflow-backend
+    runtime: python
+    pythonVersion: 3.11
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    rootDir: ./backend
+    envVars:
+      - key: DATABASE_URL
+        scope: all
+        value: sqlite:///./smartflow.db
+      - key: PYTHONUNBUFFERED
+        value: "1"
+    healthCheckPath: /docs
+    
+  - type: web
+    name: smartflow-frontend
+    runtime: node
+    nodeVersion: 18
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    rootDir: ./frontend
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        scope: all
+        value: https://smartflow-backend.onrender.com
+    
+  - type: web
+    name: smartflow-whatsapp
+    runtime: node
+    nodeVersion: 18
+    buildCommand: npm ci
+    startCommand: npm start
+    rootDir: ./whatsapp-bridge
+    envVars:
+      - key: BACKEND_URL
+        scope: all
+        value: https://smartflow-backend.onrender.com
+    healthCheckPath: /status

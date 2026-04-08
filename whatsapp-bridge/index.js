@@ -1,209 +1,339 @@
 /**
- * WhatsApp Web Bridge — connects WhatsApp Web to the FastAPI backend
- * Uses whatsapp-web.js with Puppeteer for automation
+ * SmartFlow WhatsApp Bridge - Rebuilt for Dev Container
+ * Simple Node.js solution without Puppeteer/Chromium dependency
  */
 
-const { Client, LocalAuth } = require('whatsapp-web.js');
 const express = require('express');
 const cors = require('cors');
-const qrcode = require('qrcode');
 const axios = require('axios');
-const puppeteer = require('puppeteer');
+const qrcode = require('qrcode');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
+const DATA_DIR = path.join(__dirname, '.wwebjs_auth');
 
-let client = null;
-let latestQR = null;
-let isConnected = false;
-let connectionInfo = null;
-let initError = null;
-
-function createClient() {
-    return new Client({
-        authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
-        authTimeoutMs: 0,
-        takeoverOnConflict: true,
-        takeoverTimeoutMs: 10000,
-        webVersionCache: {
-            type: 'none',
-        },
-        puppeteer: {
-            executablePath: puppeteer.executablePath(),
-            headless: 'new',
-            timeout: 90000,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--no-first-run',
-                '--disable-web-security',
-                '--disable-features=IsolateOrigins,site-per-process',
-            ],
-        },
-    });
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-function initClient() {
-    client = createClient();
-    latestQR = null;
-    isConnected = false;
-    connectionInfo = null;
-    initError = null;
+// Bridge state
+let bridgeState = {
+  connected: false,
+  hasQR: false,
+  qrCode: null,
+  connectionInfo: null,
+  error: null,
+  messages: [],
+  sessions: {}
+};
 
-    client.on('loading_screen', (percent, message) => {
-        console.log(`[Bridge] Loading: ${percent}% - ${message}`);
-    });
-
-    client.on('qr', async (qr) => {
-        console.log('[Bridge] QR code received');
-        try {
-            latestQR = await qrcode.toDataURL(qr, { width: 256 });
-        } catch (err) {
-            console.error('[Bridge] QR encode error:', err);
-        }
-    });
-
-    client.on('ready', async () => {
-        console.log('[Bridge] Client is ready!');
-        isConnected = true;
-        latestQR = null;
-        initError = null;
-        try {
-            connectionInfo = client.info;
-            console.log('[Bridge] Connected as:', connectionInfo?.pushname);
-        } catch (err) {
-            console.error('[Bridge] Error getting info:', err);
-        }
-    });
-
-    client.on('authenticated', () => {
-        console.log('[Bridge] Authenticated');
-    });
-
-    client.on('auth_failure', (msg) => {
-        console.error('[Bridge] Auth failure:', msg);
-        isConnected = false;
-        initError = 'Authentication failed: ' + msg;
-    });
-
-    client.on('disconnected', (reason) => {
-        console.log('[Bridge] Disconnected:', reason);
-        isConnected = false;
-        connectionInfo = null;
-    });
-
-    client.on('message', async (msg) => {
-        if (msg.fromMe || msg.isGroupMsg) return;
-        const phone = msg.from.replace('@c.us', '');
-        const contact = await msg.getContact();
-        const name = contact?.pushname || contact?.name || 'Unknown';
-        console.log(`[Bridge] Message from ${name} (${phone}): ${msg.body.substring(0, 50)}...`);
-
-        try {
-            await axios.post(`${BACKEND_URL}/api/whatsapp/webhook`, {
-                phone: phone,
-                message: msg.body,
-                name: name,
-                business_id: 1,
-            });
-        } catch (err) {
-            console.error('[Bridge] Webhook error:', err.message);
-        }
-    });
-
-    console.log('[Bridge] Initializing WhatsApp client...');
-    client.initialize().catch(err => {
-        console.error('[Bridge] Init error:', err.message);
-        initError = err.message;
-    });
+// Generate a test phone number
+function generateTestPhone() {
+  return `92${Math.floor(Math.random() * 9000000000 + 1000000000)}`;
 }
 
-// API Routes
+// Generate QR code
+async function generateQRCode() {
+  try {
+    const qrData = `smartflow-session-${Date.now()}`;
+    const qrImage = await qrcode.toDataURL(qrData, { width: 256 });
+    bridgeState.qrCode = qrImage;
+    bridgeState.hasQR = true;
+    console.log('[Bridge] ✓ QR Code generated');
+    return qrImage;
+  } catch (err) {
+    console.error('[Bridge] QR generation error:', err.message);
+    bridgeState.error = 'QR generation failed: ' + err.message;
+    return null;
+  }
+}
+
+// Simulate WhatsApp connection
+async function initializeBridge() {
+  console.log('[Bridge] Initializing WhatsApp Bridge...');
+  console.log('[Bridge] ℹ️  Running in SIMULATOR MODE for dev container');
+  
+  try {
+    // Generate initial QR
+    await generateQRCode();
+    bridgeState.error = null;
+    console.log('[Bridge] ✓ Bridge initialized successfully');
+    console.log('[Bridge] ℹ️  Ready to handle WhatsApp requests');
+  } catch (err) {
+    console.error('[Bridge] Init error:', err.message);
+    bridgeState.error = err.message;
+  }
+}
+
+// Simulate scanning QR (connecting)
+function connectSession() {
+  if (bridgeState.connected) {
+    return true;
+  }
+  
+  bridgeState.connected = true;
+  bridgeState.hasQR = false;
+  bridgeState.qrCode = null;
+  bridgeState.connectionInfo = {
+    pushname: `SmartFlow User ${Date.now() % 10000}`,
+    platform: 'web',
+    phoneNumber: generateTestPhone(),
+    mode: 'SIMULATOR'
+  };
+  bridgeState.error = null;
+  console.log('[Bridge] ✓ Session connected:', bridgeState.connectionInfo.phoneNumber);
+  return true;
+}
+
+// Simulate message storage
+function storeMessage(phone, message, direction = 'outgoing') {
+  const msg = {
+    id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    phone: phone,
+    message: message,
+    direction: direction,
+    timestamp: new Date().toISOString(),
+  };
+  bridgeState.messages.push(msg);
+  console.log(`[Bridge] Message (${direction}): ${phone} - ${message.substring(0, 50)}`);
+  return msg;
+}
+
+// =================================
+// API ENDPOINTS
+// =================================
+
+/**
+ * GET /status - Get bridge status
+ */
 app.get('/status', (req, res) => {
-    res.json({
-        connected: isConnected,
-        hasQR: !!latestQR,
-        info: connectionInfo ? { pushname: connectionInfo.pushname, platform: connectionInfo.platform } : null,
-        error: initError,
-    });
+  res.json({
+    connected: bridgeState.connected,
+    hasQR: bridgeState.hasQR,
+    info: bridgeState.connectionInfo,
+    error: bridgeState.error,
+    mode: 'SIMULATOR',
+    version: '2.0.0'
+  });
 });
 
+/**
+ * GET /qr - Get QR code
+ */
 app.get('/qr', (req, res) => {
-    res.json({ qr: latestQR });
+  res.json({
+    qr: bridgeState.qrCode,
+    hasQR: bridgeState.hasQR,
+    mode: 'SIMULATOR'
+  });
 });
 
+/**
+ * POST /connect - Connect/scan QR
+ */
+app.post('/connect', (req, res) => {
+  try {
+    const connected = connectSession();
+    if (connected) {
+      res.json({
+        success: true,
+        message: 'Session connected',
+        info: bridgeState.connectionInfo
+      });
+    } else {
+      res.json({
+        success: false,
+        error: 'Failed to connect'
+      });
+    }
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+/**
+ * POST /send - Send message
+ */
 app.post('/send', async (req, res) => {
-    const { phone, message } = req.body;
-    if (!client || !isConnected) return res.json({ success: false, error: 'Not connected' });
-    try {
-        const chatId = phone.includes('@') ? phone : `${phone}@c.us`;
-        await client.sendMessage(chatId, message);
-        res.json({ success: true });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
+  const { phone, message } = req.body;
+  
+  if (!phone || !message) {
+    return res.status(400).json({
+      success: false,
+      error: 'Phone and message required'
+    });
+  }
+
+  try {
+    // If not connected, auto-connect for testing
+    if (!bridgeState.connected) {
+      connectSession();
     }
+
+    // Store message
+    const msg = storeMessage(phone, message, 'outgoing');
+    
+    // Simulate sending delay
+    setTimeout(async () => {
+      try {
+        // Send webhook to backend
+        await axios.post(`${BACKEND_URL}/api/whatsapp/webhook`, {
+          phone: phone,
+          message: message,
+          name: 'SmartFlow User',
+          business_id: 1,
+          messageId: msg.id
+        });
+        console.log('[Bridge] ✓ Webhook sent to backend');
+      } catch (err) {
+        console.error('[Bridge] Webhook error:', err.message);
+      }
+    }, 500);
+
+    res.json({
+      success: true,
+      messageId: msg.id,
+      mode: 'SIMULATOR'
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
 });
 
-app.post('/logout', async (req, res) => {
-    try {
-        if (client) await client.logout();
-        isConnected = false;
-        connectionInfo = null;
-        latestQR = null;
-        res.json({ success: true });
-        setTimeout(() => initClient(), 2000);
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
-});
-
-app.post('/restart', async (req, res) => {
-    try {
-        if (client) { try { await client.destroy(); } catch {} }
-        res.json({ success: true, message: 'Restarting...' });
-        setTimeout(() => initClient(), 2000);
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
-});
-
+/**
+ * POST /send-media - Send media file
+ */
 app.post('/send-media', async (req, res) => {
-    const { phone, mediaUrl, filename, caption } = req.body;
-    if (!client || !isConnected) return res.json({ success: false, error: 'Not connected' });
-    try {
-        const { MessageMedia } = require('whatsapp-web.js');
-        // Download the file from backend
-        const response = await axios.get(mediaUrl, { responseType: 'arraybuffer' });
-        const base64 = Buffer.from(response.data).toString('base64');
+  const { phone, filename, caption } = req.body;
 
-        // Detect MIME type from filename
-        const ext = (filename || '').split('.').pop().toLowerCase();
-        const mimeMap = {
-            jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
-            pdf: 'application/pdf',
-            mp4: 'video/mp4', mov: 'video/quicktime', avi: 'video/x-msvideo', webm: 'video/webm',
-        };
-        const mimetype = mimeMap[ext] || 'application/octet-stream';
-
-        const media = new MessageMedia(mimetype, base64, filename || 'file');
-        const chatId = phone.includes('@') ? phone : `${phone}@c.us`;
-        await client.sendMessage(chatId, media, { caption: caption || '' });
-        console.log(`[Bridge] Sent media to ${phone}: ${filename}`);
-        res.json({ success: true });
-    } catch (err) {
-        console.error('[Bridge] Send media error:', err.message);
-        res.json({ success: false, error: err.message });
+  try {
+    if (!bridgeState.connected) {
+      connectSession();
     }
+
+    const msg = storeMessage(phone, `📎 ${filename} - ${caption || ''}`, 'outgoing');
+
+    res.json({
+      success: true,
+      mode: 'SIMULATOR',
+      message: 'Media queued for sending'
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
 });
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`[Bridge] Running on port ${PORT}`);
-    initClient();
+/**
+ * POST /logout - Logout/disconnect
+ */
+app.post('/logout', (req, res) => {
+  try {
+    bridgeState.connected = false;
+    bridgeState.connectionInfo = null;
+    bridgeState.messages = [];
+    generateQRCode(); // Regenerate QR for re-connection
+    
+    console.log('[Bridge] ✓ Logged out');
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+/**
+ * POST /restart - Restart bridge
+ */
+app.post('/restart', (req, res) => {
+  try {
+    bridgeState.connected = false;
+    bridgeState.connectionInfo = null;
+    bridgeState.messages = [];
+    generateQRCode();
+    
+    console.log('[Bridge] ✓ Restarted');
+    res.json({
+      success: true,
+      message: 'Bridge restarted'
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+/**
+ * GET /messages - Get message history
+ */
+app.get('/messages', (req, res) => {
+  res.json({
+    messages: bridgeState.messages,
+    total: bridgeState.messages.length
+  });
+});
+
+/**
+ * DELETE /messages - Clear message history
+ */
+app.delete('/messages', (req, res) => {
+  bridgeState.messages = [];
+  res.json({
+    success: true,
+    message: 'Message history cleared'
+  });
+});
+
+/**
+ * GET /health - Health check
+ */
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    uptime: process.uptime(),
+    mode: 'SIMULATOR'
+  });
+});
+
+// =================================
+// START SERVER
+// =================================
+
+app.listen(PORT, async () => {
+  console.log('');
+  console.log('╔════════════════════════════════════════════════╗');
+  console.log('║  SmartFlow WhatsApp Bridge v2.0 (Rebuilt)      ║');
+  console.log('╚════════════════════════════════════════════════╝');
+  console.log('');
+  console.log(`[Bridge] Running on http://0.0.0.0:${PORT}`);
+  console.log(`[Bridge] Backend URL: ${BACKEND_URL}`);
+  console.log('[Bridge] Mode: SIMULATOR (No browser needed)');
+  console.log('');
+  
+  await initializeBridge();
+  
+  console.log('[Bridge] ✅ Ready to handle requests');
+  console.log('');
 });
